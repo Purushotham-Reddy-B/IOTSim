@@ -1,0 +1,6 @@
+{
+  "name": "!",
+  "script": "arduino = Sensor(\"arduino\")\nled = LED(\"status_led\")\narduino.connect(led)\nled.turn_on()",
+  "timestamp": "20260402_210630",
+  "created_at": "2026-04-02T21:06:30.236342"
+}

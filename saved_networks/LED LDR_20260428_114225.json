@@ -1,0 +1,6 @@
+{
+  "name": "LED LDR",
+  "script": "ldr = Sensor(\"ldr_sensor\")\narduino = Arduino(\"uno\")\nled = LED(\"status_led\")\ndisplay = Display(\"intensity_display\")\nsensor2 = Sensor(\"backup_sensor\")\n\n# Create multiple connections to see more data flow\nldr.connect(arduino)\nsensor2.connect(arduino)\narduino.connect(led)\narduino.connect(display)\nled.connect(display)\n\n# Power all devices to maximize packet flow\nldr.turn_on()\nsensor2.turn_on()\narduino.turn_on()\nled.turn_on()\ndisplay.turn_on()\n",
+  "timestamp": "20260428_114225",
+  "created_at": "2026-04-28T11:42:25.554565"
+}

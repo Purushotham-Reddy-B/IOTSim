@@ -1,0 +1,6 @@
+{
+  "name": "Industry system",
+  "script": "# Factory Floor Monitoring System\npressure_sensor = Sensor(\"pressure_tank\")\nflow_sensor = Sensor(\"flow_pipe\")\ntemp_sensor = Sensor(\"temp_motor\")\nvibration_sensor = Sensor(\"vibration_bearing\")\nplc = STM32(\"factory_plc\")\ngateway = Gateway(\"industrial_gateway\")\ncloud = Cloud(\"aws_iot\")\nalarms = LED(\"warning_leds\")\nhmi = Display(\"control_panel\")\n\n# Industrial sensors to PLC\npressure_sensor.connect(plc)\nflow_sensor.connect(plc)\ntemp_sensor.connect(plc)\nvibration_sensor.connect(plc)\n\n# PLC to Gateway to Cloud\nplc.connect(gateway)\ngateway.connect(cloud)\n\n# Cloud back to factory systems\ncloud.connect(alarms)\ncloud.connect(hmi)\n\n# Activate industrial system\nplc.turn_on()\ngateway.turn_on()\ncloud.turn_on()\nalarms.turn_on()\nhmi.turn_on()",
+  "timestamp": "20260403_214541",
+  "created_at": "2026-04-03T21:45:41.725899"
+}

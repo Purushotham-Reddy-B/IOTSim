@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Python IoT Editor</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
+</head>
+<body>
+
+<h2>Write Python IoT Script</h2>
+
+<div id="msg"></div>
+<div id="history"></div>
+
+<h3>Python IoT Script</h3>
+<p>Create IoT devices using normal Python classes:</p>
+<textarea id="script" rows="15" cols="80"></textarea>
+<br><br>
+
+<button onclick="validateScript()">Validate</button>
+<button onclick="runSimulation()">Run Simulation</button>
+<button onclick="loadExample()">Load Example</button>
+<button onclick="saveNetwork()"> Save Network</button>
+<button onclick="showSavedNetworks()"> Load Network</button>
+<button onclick="toggleChatbot()">🤖 AI Assistant</button>
+
+<!-- Chatbot Interface -->
+<div id="chatbot-panel" style="display: none; margin-top: 20px; border: 2px solid #007bff; border-radius: 10px; padding: 15px; background: #f8f9fa;">
+    <h3 style="margin-top: 0;">🤖 IoT Simulator AI Assistant</h3>
+    <p style="margin-bottom: 10px; color: #666;">Ask me to generate scripts or answer questions about the simulator</p>
+    
+    <div id="chatbot-messages" style="height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; background: white; border-radius: 5px;"></div>
+    
+    <div style="display: flex; gap: 10px;">
+        <input type="text" id="chatbot-input" placeholder="Ask about scripts or simulator features..." 
+               style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 5px;" 
+               onkeypress="if(event.key === 'Enter') sendChatbotMessage()">
+        <button onclick="sendChatbotMessage()" style="padding: 8px 15px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">Send</button>
+    </div>
+    
+    <div style="margin-top: 10px; font-size: 12px; color: #666;">
+        <strong>Try:</strong> "Create smart home network", "How to use multi-layer view", "What devices are available?"
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
+
+<script>
+const editor = CodeMirror.fromTextArea(document.getElementById('script'), {
+    mode: 'python',
+    theme: 'monokai',
+    lineNumbers: true,
+    indentUnit: 4,
+    lineWrapping: true
+});
+
+function validateScript() {
+    const script = editor.getValue();
+
+    fetch("/simulate", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({script})
+    })
+    .then(async res => {
+        if (!res.ok) {
+            const err = await res.json();
+            alert(err.error);
+        } else {
+            alert("Valid Python script");
+        }
+    })
+    .catch(() => alert("Server error"));
+}
+
+function runSimulation() {
+    const script = editor.getValue();
+
+    fetch("/simulate", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({script})
+    })
+    .then(async res => {
+        if (!res.ok) {
+            const err = await res.json();
+            alert(err.error);
+            return;
+        }
+        const data = await res.json();
+        localStorage.setItem("simData", JSON.stringify(data));
+        window.location.href = "/simulation";
+    })
+    .catch(() => alert("Server error"));
+}
+
+function loadExample() {
+    const exampleScript = `# Basic LED Blinking Example
+# Simple IoT demonstration
+
+# Create devices
+arduino = Arduino("uno")
+led = LED("status")
+
+# Connect LED to Arduino
+arduino.connect(led)
+
+# Power on system
+arduino.turn_on()
+led.turn_on()
+
+# Blink LED
+led.turn_on()
+led.turn_off()
+led.turn_on()
+led.turn_off()
+
+print("LED blinking completed!")`;
+    
+    editor.setValue(exampleScript);
+}
+
+function saveNetwork() {
+    const script = editor.getValue();
+    const name = prompt("Enter a name for your network:", "my_network");
+    
+    if (!name || !script.trim()) {
+        alert("Please provide a name and script to save");
+        return;
+    }
+    
+    fetch("/save_network", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({script, name})
+    })
+    .then(async res => {
+        if (!res.ok) {
+            const err = await res.json();
+            alert(err.error);
+        } else {
+            const data = await res.json();
+            alert(`Network saved as: ${data.filename}`);
+        }
+    })
+    .catch(() => alert("Server error"));
+}
+
+function showSavedNetworks() {
+    fetch("/list_networks")
+    .then(async res => {
+        if (!res.ok) {
+            alert("Failed to load networks");
+            return;
+        }
+        const data = await res.json();
+        displayNetworksList(data.networks);
+    })
+    .catch(() => alert("Server error"));
+}
+
+function displayNetworksList(networks) {
+    let html = "<h3>Saved Networks</h3>";
+    
+    if (networks.length === 0) {
+        html += "<p>No saved networks found.</p>";
+    } else {
+        html += "<table border='1' style='border-collapse: collapse; width: 100%;'>";
+        html += "<tr><th>Name</th><th>Created</th><th>Actions</th></tr>";
+        
+        networks.forEach(network => {
+            html += `<tr>`;
+            html += `<td>${network.name}</td>`;
+            html += `<td>${new Date(network.created_at).toLocaleString()}</td>`;
+            html += `<td>`;
+            html += `<button onclick="loadNetwork('${network.filename}')">Load</button> `;
+            html += `<button onclick="deleteNetwork('${network.filename}')">Delete</button>`;
+            html += `</td>`;
+            html += `</tr>`;
+        });
+        
+        html += "</table>";
+    }
+    
+    html += "<br><button onclick='closeNetworksList()'>Close</button>";
+    
+    // Create modal overlay
+    const modal = document.createElement('div');
+    modal.id = 'networksModal';
+    modal.style.cssText = `
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.8); z-index: 1000;
+        display: flex; align-items: center; justify-content: center;
+    `;
+    
+    const content = document.createElement('div');
+    content.style.cssText = `
+        background: white; padding: 20px; border-radius: 10px;
+        max-width: 600px; max-height: 80vh; overflow-y: auto;
+    `;
+    content.innerHTML = html;
+    
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+}
+
+function loadNetwork(filename) {
+    fetch("/load_network", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({filename})
+    })
+    .then(async res => {
+        if (!res.ok) {
+            const err = await res.json();
+            alert(err.error);
+            return;
+        }
+        const data = await res.json();
+        editor.setValue(data.script);
+        closeNetworksList();
+        alert(`Network "${data.name}" loaded successfully!`);
+    })
+    .catch(() => alert("Server error"));
+}
+
+function deleteNetwork(filename) {
+    if (!confirm("Are you sure you want to delete this network?")) {
+        return;
+    }
+    
+    fetch("/delete_network", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({filename})
+    })
+    .then(async res => {
+        if (!res.ok) {
+            const err = await res.json();
+            alert(err.error);
+        } else {
+            showSavedNetworks(); // Refresh the list
+        }
+    })
+    .catch(() => alert("Server error"));
+}
+
+function closeNetworksList() {
+    const modal = document.getElementById('networks-modal');
+    if (modal) modal.remove();
+}
+
+// Chatbot Functions
+function toggleChatbot() {
+    const panel = document.getElementById('chatbot-panel');
+    if (panel.style.display === 'none') {
+        panel.style.display = 'block';
+        addChatbotMessage("Hello! I'm your IoT Simulator AI Assistant. I can help you generate scripts or answer questions about the simulator. What would you like to know?", 'bot');
+    } else {
+        panel.style.display = 'none';
+    }
+}
+
+function sendChatbotMessage() {
+    const input = document.getElementById('chatbot-input');
+    const message = input.value.trim();
+    
+    if (!message) return;
+    
+    // Add user message to chat
+    addChatbotMessage(message, 'user');
+    input.value = '';
+    
+    // Send to backend
+    fetch('/chatbot', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({query: message})
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.error) {
+            addChatbotMessage(`Error: ${data.error}`, 'bot');
+        } else {
+            addChatbotMessage(data.response, 'bot', data.type);
+            
+            // If it's a script, offer to insert it into editor
+            if (data.type === 'script') {
+                addChatbotMessage("Would you like me to insert this script into the editor? Click 'Insert Script' below.", 'bot');
+                addInsertButton(data.response);
+            }
+        }
+    })
+    .catch(err => {
+        addChatbotMessage(`Error: ${err}`, 'bot');
+    });
+}
+
+function addChatbotMessage(message, sender, type = 'qa') {
+    const messagesDiv = document.getElementById('chatbot-messages');
+    const messageDiv = document.createElement('div');
+    messageDiv.style.marginBottom = '10px';
+    messageDiv.style.padding = '8px';
+    messageDiv.style.borderRadius = '5px';
+    
+    if (sender === 'user') {
+        messageDiv.style.background = '#007bff';
+        messageDiv.style.color = 'white';
+        messageDiv.style.marginLeft = '20%';
+    } else {
+        messageDiv.style.background = '#e9ecef';
+        messageDiv.style.color = '#333';
+        messageDiv.style.marginRight = '20%';
+    }
+    
+    if (type === 'script') {
+        messageDiv.style.whiteSpace = 'pre-wrap';
+        messageDiv.style.fontFamily = 'monospace';
+        messageDiv.style.fontSize = '12px';
+    }
+    
+    messageDiv.textContent = message;
+    messagesDiv.appendChild(messageDiv);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+
+function addInsertButton(script) {
+    const messagesDiv = document.getElementById('chatbot-messages');
+    const buttonDiv = document.createElement('div');
+    buttonDiv.style.marginBottom = '10px';
+    buttonDiv.style.textAlign = 'center';
+    
+    const button = document.createElement('button');
+    button.textContent = 'Insert Script';
+    button.style.padding = '8px 15px';
+    button.style.background = '#28a745';
+    button.style.color = 'white';
+    button.style.border = 'none';
+    button.style.borderRadius = '5px';
+    button.style.cursor = 'pointer';
+    button.onclick = () => {
+        editor.setValue(script);
+        addChatbotMessage('Script inserted into editor!', 'bot');
+        buttonDiv.remove();
+    };
+    
+    buttonDiv.appendChild(button);
+    messagesDiv.appendChild(buttonDiv);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+</script>
+
+</body>
+</html>

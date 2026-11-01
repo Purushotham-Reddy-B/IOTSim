@@ -1,0 +1,9 @@
+# IoT Simulation Trace File
+# Format: timestamp|device_id|event|protocol|data_size|energy_consumption|latency_ms|packet_id
+# Network: Smart_Home_Network
+# Total Events: 4
+
+0.000|temp_sensor_01|transmit|I2C|32|0.2820|321.00|pkt_000000
+0.321|hum_sensor_01|transmit|I2C|32|0.2820|321.00|pkt_000001
+0.642|rpi_gateway|transmit|WiFi|128|2.7280|6401.00|pkt_000002
+7.043|rpi_gateway|transmit|MQTT|256|1.8560|20481.00|pkt_000003

@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>IoT Simulation</title>
+    <script src="/static/cytoscape.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        #cy { width: 100%; height: 500px; border: 1px solid #ccc; margin: 20px 0; }
+        .controls { margin: 20px 0; }
+        .controls button { padding: 10px 20px; margin: 5px; font-size: 14px; }
+        .status { margin: 10px 0; padding: 10px; background: #f0f0f0; border-radius: 5px; }
+        .edge-active {
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.3; }
+            50% { opacity: 1; }
+            100% { opacity: 0.3; }
+        }
+    </style>
+</head>
+<body>
+
+<h2>IoT Network Simulation</h2>
+
+<div class="status">
+    <strong>Status:</strong> <span id="simStatus">Ready</span> | 
+    <strong>Time:</strong> <span id="simTime">0</span>s | 
+    <strong>Data Packets:</strong> <span id="packetCount">0</span> | 
+    <strong>Network Load:</strong> <span id="networkLoad">0</span>% | 
+    <strong>Active Nodes:</strong> <span id="activeNodes">0</span>/<span id="totalNodes">0</span> |
+    <strong>Active Packets:</strong> <span id="activePackets">0</span>
+</div>
+
+<div class="controls">
+    <button onclick="startSimulation()">▶️ Start</button>
+    <button id="pauseResumeBtn" onclick="togglePauseResume()">⏸️ Pause</button>
+    <button onclick="resetSimulation()">🔄 Reset</button>
+    <button onclick="stepSimulation()">⏭️ Step</button>
+    <button onclick="togglePacketMode()">📦 Packet Mode: <span id="packetMode">Basic</span></button>
+    <button onclick="toggleVisualizationLayer()">📊 Layer: <span id="vizLayer">Device</span></button>
+    <button onclick="exportData()">💾 Export</button>
+    <button onclick="downloadTraceFile()">📄 Download Trace</button>
+    <button onclick="clearTraceData()">🗑️ Clear Trace</button>
+    <a href="/editor"><button>📝 Back to Editor</button></a>
+</div>
+
+<div id="cy"></div>
+
+<div class="status">
+    <h3>Simulation Log</h3>
+    <div id="simLog" style="height: 150px; overflow-y: auto; background: #f9f9f9; padding: 10px; border: 1px solid #ddd; font-family: monospace; font-size: 12px;"></div>
+</div>
+
+<script>
+const data = JSON.parse(localStorage.getItem("simData") || "{}");
+let simulationInterval = null;
+let simulationTime = 0;
+let packetCount = 0;
+let isPaused = false;
+let packetMode = 'Basic';
+let activePackets = [];
+let packetIdCounter = 0;
+let visualizationLayer = 'Device';
+
+const cy = cytoscape({
+    container: document.getElementById('cy'),
+    elements: data.elements || [],
+    layout: { name: 'breadthfirst', directed: true, spacingFactor: 1.2 },
+
+    style: [
+        {
+            selector: 'node',
+            style: {
+                'label': 'data(label)',
+                'background-color': '#777',
+                'text-valign': 'center',
+                'text-halign': 'center',
+                'width': '60px',
+                'height': '60px',
+                'font-size': '12px',
+                'color': 'white',
+                'text-outline-width': '2px',
+                'text-outline-color': '#333'
+            }
+        },
+        {
+            selector: 'node[type="Sensor"]',
+            style: {
+                'background-color': '#3498db',
+                'shape': 'rectangle'
+            }
+        },
+        {
+            selector: 'node[type="Gateway"]',
+            style: {
+                'background-color': '#2ecc71',
+                'shape': 'diamond'
+            }
+        },
+        {
+            selector: 'node[type="Actuator"]',
+            style: {
+                'background-color': '#e74c3c',
+                'shape': 'triangle'
+            }
+        },
+        {
+            selector: 'node[type="Camera"]',
+            style: {
+                'background-color': '#9b59b6',
+                'shape': 'pentagon'
+            }
+        },
+        {
+            selector: 'node[type="Switch"]',
+            style: {
+                'background-color': '#f39c12',
+                'shape': 'hexagon'
+            }
+        },
+        {
+            selector: 'node[type="Router"]',
+            style: {
+                'background-color': '#1abc9c',
+                'shape': 'octagon'
+            }
+        },
+        {
+            selector: 'node[type="Server"]',
+            style: {
+                'background-color': '#34495e',
+                'shape': 'square'
+            }
+        },
+        {
+            selector: 'node[type="Cloud"]',
+            style: {
+                'background-color': '#ecf0f1',
+                'shape': 'ellipse',
+                'border-color': '#bdc3c7',
+                'border-width': '2px'
+            }
+        },
+        {
+            selector: 'node[type="Mobile"]',
+            style: {
+                'background-color': '#e67e22',
+                'shape': 'round-rectangle'
+            }
+        },
+        {
+            selector: 'node[type="LED"]',
+            style: {
+                'background-color': '#f1c40f',
+                'shape': 'circle'
+            }
+        },
+        {
+            selector: 'node[type="Motor"]',
+            style: {
+                'background-color': '#95a5a6',
+                'shape': 'triangle'
+            }
+        },
+        {
+            selector: 'node[type="Display"]',
+            style: {
+                'background-color': '#16a085',
+                'shape': 'rectangle'
+            }
+        },
+        {
+            selector: 'node[type="Arduino"]',
+            style: {
+                'background-color': '#00979c',
+                'shape': 'rectangle'
+            }
+        },
+        {
+            selector: 'node[type="ESP32"]',
+            style: {
+                'background-color': '#8b4513',
+                'shape': 'square'
+            }
+        },
+        {
+            selector: 'node[type="STM32"]',
+            style: {
+                'background-color': '#ff6b35',
+                'shape': 'rectangle'
+            }
+        },
+        {
+            selector: 'node[type="PIC"]',
+            style: {
+                'background-color': '#4169e1',
+                'shape': 'square'
+            }
+        },
+        {
+            selector: 'node[type="RaspberryPi"]',
+            style: {
+                'background-color': '#c51a4a',
+                'shape': 'round-rectangle'
+            }
+        },
+        {
+            selector: 'node[type="BeagleBone"]',
+            style: {
+                'background-color': '#ff8c00',
+                'shape': 'rectangle'
+            }
+        },
+        {
+            selector: 'node[type="JetsonNano"]',
+            style: {
+                'background-color': '#32cd32',
+                'shape': 'square'
+            }
+        },
+        {
+            selector: 'node[type="WiFi"]',
+            style: {
+                'background-color': '#007bff',
+                'shape': 'diamond'
+            }
+        },
+        {
+            selector: 'node[type="Bluetooth"]',
+            style: {
+                'background-color': '#3b5998',
+                'shape': 'hexagon'
+            }
+        },
+        {
+            selector: 'node[type="LoRa"]',
+            style: {
+                'background-color': '#9c27b0',
+                'shape': 'octagon'
+            }
+        },
+        {
+            selector: 'node[type="Zigbee"]',
+            style: {
+                'background-color': '#ff9800',
+                'shape': 'triangle'
+            }
+        },
+        {
+            selector: 'node[type="Battery"]',
+            style: {
+                'background-color': '#4caf50',
+                'shape': 'rectangle'
+            }
+        },
+        {
+            selector: 'node[type="PowerSupply"]',
+            style: {
+                'background-color': '#f44336',
+                'shape': 'square'
+            }
+        },
+        {
+            selector: 'node[type="SolarPanel"]',
+            style: {
+                'background-color': '#ffeb3b',
+                'shape': 'rectangle'
+            }
+        },
+        {
+            selector: 'node[type="SDCard"]',
+            style: {
+                'background-color': '#795548',
+                'shape': 'rectangle'
+            }
+        },
+        {
+            selector: 'node[type="EEPROM"]',
+            style: {
+                'background-color': '#607d8b',
+                'shape': 'square'
+            }
+        },
+        {
+            selector: 'node[type="FlashMemory"]',
+            style: {
+                'background-color': '#e91e63',
+                'shape': 'rectangle'
+            }
+        },
+        {
+            selector: 'edge',
+            style: {
+                'line-color': '#999',
+                'target-arrow-shape': 'triangle',
+                'target-arrow-color': '#999',
+                'width': '2px',
+                'curve-style': 'bezier'
+            }
+        },
+        {
+            selector: '.edge-active',
+            style: {
+                'line-color': '#ff6b35',
+                'target-arrow-color': '#ff6b35',
+                'width': '4px'
+            }
+        },
+        {
+            selector: '.packet',
+            style: {
+                'width': '20px',
+                'height': '20px',
+                'shape': 'ellipse',
+                'background-color': '#ff6b35',
+                'border-width': '2px',
+                'border-color': '#fff',
+                'z-index': 1000
+            }
+        }
+    ]
+});
+
+// Packet class for data visualization
+class DataPacket {
+    constructor(sourceNode, targetNode, packetType = 'data') {
+        this.id = `packet_${packetIdCounter++}`;
+        this.source = sourceNode;
+        this.target = targetNode;
+        this.type = packetType;
+        this.progress = 0;
+        this.speed = 0.02 + Math.random() * 0.03;
+        this.color = this.getPacketColor(packetType);
+        this.path = this.calculatePath();
+        this.element = null;
+    }
+    
+    getPacketColor(type) {
+        const colors = {
+            'data': '#ff6b35',
+            'control': '#3498db',
+            'sensor': '#2ecc71',
+            'alert': '#e74c3c',
+            'wifi': '#007bff',
+            'bluetooth': '#3b5998',
+            'lora': '#9c27b0',
+            'zigbee': '#ff9800',    // Orange for Zigbee
+            'i2c': '#e67e22',      // Orange for I2C
+            'serial': '#8e44ad',    // Purple for Serial
+            'gpio': '#f39c12',      // Yellow for GPIO
+            'spi': '#16a085'        // Teal for SPI
+        };
+        return colors[type] || '#ff6b35';
+    }
+    
+    calculatePath() {
+        const sourcePos = this.source.position();
+        const targetPos = this.target.position();
+        return {
+            x1: sourcePos.x,
+            y1: sourcePos.y,
+            x2: targetPos.x,
+            y2: targetPos.y
+        };
+    }
+    
+    update() {
+        this.progress += this.speed;
+        if (this.progress >= 1) {
+            // Packet reached destination - add trace entry
+            addTraceEntry('r', this.source.id(), this.target.id(), this.type, `Packet delivered: ${this.description}`);
+            return false; // Packet reached destination
+        }
+        
+        // Calculate position along path
+        const sourcePos = this.source.position();
+        const targetPos = this.target.position();
+        const x = sourcePos.x + (targetPos.x - sourcePos.x) * this.progress;
+        const y = sourcePos.y + (targetPos.y - sourcePos.y) * this.progress;
+        
+        // Update packet position
+        if (!this.element) {
+            this.element = cy.add({
+                group: 'nodes',
+                data: { id: this.id, label: '📦' },
+                position: { x, y }
+            });
+            // Add trace entry for packet creation
+            addTraceEntry('s', this.source.id(), this.target.id(), this.type, `Packet sent: ${this.description}`);
+        } else {
+            this.element.position({ x, y });
+        }
+        return true; // Packet still traveling
+    }
+    
+    destroy() {
+        if (this.element) {
+            cy.remove(this.element);
+        }
+    }
+}
+
+// Apply initial states - all grey except LEDs (start OFF)
+const states = data.states || {};
+Object.keys(states).forEach(id => {
+    const n = cy.getElementById(id);
+    if (!n) return;
+    // Always start with grey, regardless of initial state
+    n.style('background-color', '#333');
+});
+
+function log(message) {
+    const logDiv = document.getElementById("simLog");
+    const timestamp = new Date().toLocaleTimeString();
+    logDiv.innerHTML += `[${timestamp}] ${message}\n`;
+    logDiv.scrollTop = logDiv.scrollHeight;
+}
+
+function startSimulation() {
+    if (isPaused) {
+        isPaused = false;
+        log("▶️ Simulation resumed");
+        addTraceEntry('s', 'system', 'system', 'control', 'Simulation resumed');
+    } else {
+        log("🚀 Simulation started");
+        addTraceEntry('s', 'system', 'system', 'control', 'Simulation started');
+    }
+    
+    isPaused = false;
+    simulationInterval = setInterval(() => {
+        if (!isPaused) {
+            simulationTime++;
+            document.getElementById("simTime").textContent = simulationTime;
+            
+            // Simulate data flow
+            simulateDataFlow();
+            
+            // Update packet animations
+            updatePackets();
+            
+            // Random state changes for actuators and LEDs - force LED toggle
+            if (simulationTime % 2 === 0) {
+                toggleRandomLED();
+            }
+            if (simulationTime % 5 === 0) {
+                toggleRandomActuator();
+            }
+        }
+    }, 1000);
+    
+    // Start packet animation loop (faster for smooth animation)
+    setInterval(() => {
+        if (!isPaused && (packetMode === 'Advanced' || packetMode === 'Visual')) {
+            updatePackets();
+        }
+    }, 50);
+}
+
+function pauseSimulation() {
+    isPaused = true;
+    log("⏸️ Simulation paused");
+    addTraceEntry('s', 'system', 'system', 'control', 'Simulation paused');
+    document.getElementById("simStatus").textContent = 'Paused';
+}
+
+function togglePauseResume() {
+    const pauseResumeBtn = document.getElementById("pauseResumeBtn");
+    
+    if (isPaused) {
+        // Resume simulation
+        isPaused = false;
+        pauseResumeBtn.innerHTML = '⏸️ Pause';
+        pauseResumeBtn.title = 'Pause Simulation';
+        log("▶️ Simulation resumed");
+        addTraceEntry('s', 'system', 'system', 'control', 'Simulation resumed');
+        document.getElementById("simStatus").textContent = 'Running';
+        
+        // Continue the simulation from where it left off
+        if (simulationInterval) {
+            // Simulation was running, just unpause
+            log("📊 Continuing simulation from time: " + simulationTime);
+        }
+    } else {
+        // Pause simulation
+        isPaused = true;
+        pauseResumeBtn.innerHTML = '▶️ Resume';
+        pauseResumeBtn.title = 'Resume Simulation';
+        log("⏸️ Simulation paused");
+        addTraceEntry('s', 'system', 'system', 'control', 'Simulation paused');
+        document.getElementById("simStatus").textContent = 'Paused';
+        
+        // Preserve current state
+        log("📊 Simulation state preserved at time: " + simulationTime);
+    }
+}
+
+function resetSimulation() {
+    clearInterval(simulationInterval);
+    simulationInterval = null;
+    simulationTime = 0;
+    packetCount = 0;
+    isPaused = false;
+    
+    document.getElementById("simTime").textContent = '0';
+    document.getElementById("packetCount").textContent = '0';
+    document.getElementById("networkLoad").textContent = '0';
+    document.getElementById("activeNodes").textContent = '0';
+    document.getElementById("simStatus").textContent = 'Ready';
+    
+    // Reset pause/resume button to initial state
+    const pauseResumeBtn = document.getElementById("pauseResumeBtn");
+    pauseResumeBtn.innerHTML = '⏸️ Pause';
+    pauseResumeBtn.title = 'Pause Simulation';
+    
+    // Clear packets
+    activePackets.forEach(packet => packet.destroy());
+    activePackets = [];
+    
+    // Reset device states
+    const states = data.states || {};
+    Object.keys(states).forEach(id => {
+        const n = cy.getElementById(id);
+        if (!n) return;
+        // Always start with grey, regardless of initial state
+        n.style('background-color', '#333');
+    });
+    
+    log("🔄 Simulation reset");
+    addTraceEntry('s', 'system', 'system', 'control', 'Simulation reset');
+    clearTraceData(); // Clear trace data on reset
+}
+
+function stepSimulation() {
+    simulationTime++;
+    document.getElementById("simTime").textContent = simulationTime;
+    simulateDataFlow();
+    updatePackets();
+    log('⏭️ Step executed');
+    addTraceEntry('s', 'system', 'system', 'control', 'Step executed');
+}
+
+function simulateDataFlow() {
+    const nodes = cy.nodes();
+    if (nodes.length === 0) return;
+    
+    // Find logical data flow paths
+    const dataFlows = findDataFlowPaths();
+    
+    if (dataFlows.length === 0) {
+        // Fallback to random edge if no logical paths found
+        const edges = cy.edges();
+        if (edges.length === 0) return;
+        const randomEdge = edges[Math.floor(Math.random() * edges.length)];
+        createDataPacket(randomEdge);
+        activateEdge(randomEdge);
+        
+        const source = randomEdge.source();
+        const target = randomEdge.target();
+        log(`📦 DATA: ${source.id()} → ${target.id()} (random flow)`);
+        
+        // Add trace entry for random flow
+        addTraceEntry('s', source.id(), target.id(), 'data', 'Random data flow');
+    } else {
+        // Create packets for logical data flows
+        const randomFlow = dataFlows[Math.floor(Math.random() * dataFlows.length)];
+        createDataPacket(randomFlow.edge, randomFlow.type);
+        activateEdge(randomFlow.edge);
+        
+        const source = randomFlow.edge.source();
+        const target = randomFlow.edge.target();
+        log(`📦 ${randomFlow.type.toUpperCase()}: ${source.id()} → ${target.id()} (${randomFlow.description})`);
+        
+        // Add trace entry for protocol flow
+        addTraceEntry('s', source.id(), target.id(), randomFlow.type, randomFlow.description);
+    }
+    
+    // Update packet count
+    packetCount++;
+    document.getElementById("packetCount").textContent = packetCount;
+    
+    // Calculate network load
+    const networkLoad = Math.min(100, Math.round((packetCount / Math.max(1, simulationTime)) * 20));
+    document.getElementById("networkLoad").textContent = networkLoad;
+    
+    // Count active nodes
+    const activeNodes = cy.nodes().filter(n => {
+        const color = n.style('background-color');
+        return color === 'rgb(255, 107, 53)' || color === '#ff6b35';
+    }).length;
+    document.getElementById("activeNodes").textContent = activeNodes;
+    document.getElementById("totalNodes").textContent = cy.nodes().length;
+}
+
+function findDataFlowPaths() {
+    const dataFlows = [];
+    const nodes = cy.nodes();
+    
+    nodes.forEach(source => {
+        const sourceType = source.data('type');
+        
+        // Find outgoing edges from this source
+        const outgoingEdges = source.connectedEdges().filter(edge => edge.source().id() === source.id());
+        
+        outgoingEdges.forEach(edge => {
+            const target = edge.target();
+            const targetType = target.data('type');
+            
+            // Different protocols with different packet types
+            let flowType = 'data';
+            let description = '';
+            
+            // I2C Protocol: Sensor → Microcontroller
+            if (sourceType === 'Sensor' && ['Arduino', 'ESP32', 'STM32', 'PIC'].includes(targetType)) {
+                flowType = 'i2c';
+                description = 'I2C Protocol: Sensor to Microcontroller';
+            }
+            // Serial/UART Protocol: Microcontroller → Raspberry Pi
+            else if (['Arduino', 'ESP32', 'STM32', 'PIC'].includes(sourceType) && targetType === 'RaspberryPi') {
+                flowType = 'serial';
+                description = 'Serial/UART Protocol: Microcontroller to SBC';
+            }
+            // GPIO Protocol: Raspberry Pi → LED
+            else if (sourceType === 'RaspberryPi' && targetType === 'LED') {
+                flowType = 'gpio';
+                description = 'GPIO Protocol: SBC to LED Control';
+            }
+            // WiFi Protocol: Raspberry Pi/ESP32 → Cloud/Server
+            else if ((sourceType === 'RaspberryPi' || sourceType === 'ESP32') && ['Cloud', 'Server'].includes(targetType)) {
+                flowType = 'wifi';
+                description = 'WiFi Protocol: Wireless to Cloud';
+            }
+            // Bluetooth Protocol: ESP32 → Mobile/Device
+            else if (sourceType === 'ESP32' && targetType === 'Mobile') {
+                flowType = 'bluetooth';
+                description = 'Bluetooth Protocol: Short-range Wireless';
+            }
+            // LoRa Protocol: LoRa module → Gateway/Cloud
+            else if (sourceType === 'LoRa' && ['Gateway', 'Cloud', 'Server'].includes(targetType)) {
+                flowType = 'lora';
+                description = 'LoRa Protocol: Long-range Wireless';
+            }
+            // Zigbee Protocol: Zigbee → Coordinator/Gateway
+            else if (sourceType === 'Zigbee' && ['Gateway', 'Router'].includes(targetType)) {
+                flowType = 'zigbee';
+                description = 'Zigbee Protocol: Mesh Network';
+            }
+            // SPI Protocol: Sensor → SBC
+            else if (sourceType === 'Sensor' && targetType === 'RaspberryPi') {
+                flowType = 'spi';
+                description = 'SPI Protocol: Sensor to SBC';
+            }
+            // GPIO Protocol: SBC → Motor/Fan
+            else if (['RaspberryPi', 'Arduino', 'ESP32'].includes(sourceType) && ['Motor', 'Actuator'].includes(targetType)) {
+                flowType = 'gpio';
+                description = 'GPIO Protocol: SBC to Motor/Fan';
+            }
+            
+            if (description) {
+                dataFlows.push({
+                    edge: edge,
+                    type: flowType,
+                    description: description
+                });
+            }
+        });
+    });
+    
+    return dataFlows;
+}
+
+function activateEdge(edge) {
+    edge.addClass('edge-active');
+    setTimeout(() => {
+        edge.removeClass('edge-active');
+    }, 2000);
+}
+
+function createDataPacket(edge, packetType = null) {
+    const source = edge.source();
+    const target = edge.target();
+    
+    // Use provided packet type or determine based on source node
+    if (!packetType) {
+        if (source.data('type') === 'Sensor') packetType = 'sensor';
+        else if (source.data('type') === 'WiFi') packetType = 'wifi';
+        else if (source.data('type') === 'Bluetooth') packetType = 'bluetooth';
+        else if (source.data('type') === 'LoRa') packetType = 'lora';
+        else if (source.data('type') === 'Gateway') packetType = 'control';
+        else if (Math.random() < 0.1) packetType = 'alert'; // Random alerts
+        else packetType = 'data';
+    }
+    
+    const packet = new DataPacket(source, target, packetType);
+    activePackets.push(packet);
+    
+    // Update active packets count
+    document.getElementById("activePackets").textContent = activePackets.length;
+}
+
+function updatePackets() {
+    // Update all active packets
+    activePackets = activePackets.filter(packet => {
+        const stillActive = packet.update();
+        if (!stillActive) {
+            packet.destroy();
+            return false;
+        }
+        return true;
+    });
+    
+    // Update active packets count
+    document.getElementById("activePackets").textContent = activePackets.length;
+}
+
+function togglePacketMode() {
+    const modes = ['Basic', 'Advanced', 'Visual'];
+    const currentIndex = modes.indexOf(packetMode);
+    packetMode = modes[(currentIndex + 1) % modes.length];
+    document.getElementById('packetMode').textContent = packetMode;
+    
+    log(`📦 Packet mode changed to: ${packetMode}`);
+    
+    // Clear existing packets when switching modes
+    activePackets.forEach(packet => packet.destroy());
+    activePackets = [];
+    document.getElementById("activePackets").textContent = '0';
+}
+
+function toggleRandomActuator() {
+    const actuators = cy.nodes('[type="Actuator"]');
+    const fans = cy.nodes('[type="Motor"]');
+    
+    // Toggle Fans specifically
+    if (fans.length > 0) {
+        fans.forEach(fan => {
+            const currentState = fan.style('background-color');
+            if (currentState === 'rgb(46, 204, 113)' || currentState === '#2ecc71') {
+                fan.style('background-color', '#333');
+                log(`🌀 ${fan.id()} turned OFF`);
+            } else {
+                fan.style('background-color', '#2ecc71');
+                log(`🌀 ${fan.id()} turned ON`);
+            }
+        });
+    }
+    
+    // Toggle other actuators
+    if (actuators.length > 0) {
+        const randomActuator = actuators[Math.floor(Math.random() * actuators.length)];
+        const currentState = randomActuator.style('background-color');
+        
+        if (currentState === 'rgb(255, 107, 53)' || currentState === '#ff6b35') {
+            randomActuator.style('background-color', '#333');
+            log(`🔴 ${randomActuator.id()} turned OFF`);
+        } else {
+            randomActuator.style('background-color', '#333');
+            log(`🟢 ${randomActuator.id()} turned ON`);
+        }
+    }
+}
+
+function toggleRandomLED() {
+    const leds = cy.nodes('[type="LED"]');
+    if (leds.length === 0) return;
+    
+    leds.forEach(led => {
+        const currentState = led.style('background-color');
+        
+        // Force toggle based on simulation time
+        if (simulationTime % 4 === 0 || simulationTime % 4 === 1) {
+            // Even seconds: ON
+            led.style('background-color', '#f1c40f');
+            log(`💡 ${led.id()} turned ON`);
+            addTraceEntry('r', led.id(), 'system', 'gpio', 'LED turned ON');
+        } else {
+            // Odd seconds: OFF
+            led.style('background-color', '#333');
+            log(`💡 ${led.id()} turned OFF`);
+            addTraceEntry('r', led.id(), 'system', 'gpio', 'LED turned OFF');
+        }
+    });
+}
+
+// Trace File System (NS2-style)
+let traceData = [];
+let traceStartTime = Date.now();
+
+function addTraceEntry(eventType, source, target, packetType, description) {
+    const timestamp = ((Date.now() - traceStartTime) / 1000).toFixed(6);
+    const traceEntry = {
+        time: parseFloat(timestamp),
+        event: eventType,
+        source: source,
+        target: target,
+        packetType: packetType,
+        description: description,
+        simulationTime: simulationTime
+    };
+    traceData.push(traceEntry);
+}
+
+function generateTraceFile() {
+    let traceContent = "# IoT Simulator Trace File\n";
+    traceContent += "# Format: time event source target packetType description\n";
+    traceContent += "# Generated: " + new Date().toISOString() + "\n";
+    traceContent += "# Simulation Time: " + simulationTime + "s\n";
+    traceContent += "# Total Packets: " + packetCount + "\n\n";
+    
+    traceData.forEach(entry => {
+        traceContent += `${entry.time} ${entry.event} ${entry.source} ${entry.target} ${entry.packetType} "${entry.description}"\n`;
+    });
+    
+    return traceContent;
+}
+
+function exportData() {
+    // Create comprehensive JSON export
+    const exportData = {
+        simulation_id: `sim_${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        simulation_time: simulationTime,
+        packet_count: packetCount,
+        devices: [],
+        protocols: [],
+        performance: {
+            network_load: document.getElementById("networkLoad").textContent,
+            active_nodes: document.getElementById("activeNodes").textContent,
+            total_nodes: document.getElementById("totalNodes").textContent,
+            active_packets: document.getElementById("activePackets").textContent
+        },
+        trace_data: traceData,
+        network_topology: {
+            nodes: cy.nodes().map(node => ({
+                id: node.id(),
+                label: node.data('label'),
+                type: node.data('type'),
+                position: node.position()
+            })),
+            edges: cy.edges().map(edge => ({
+                id: edge.id(),
+                source: edge.source().id(),
+                target: edge.target().id()
+            }))
+        }
+    };
+
+    // Add device information
+    cy.nodes().forEach(node => {
+        exportData.devices.push({
+            id: node.id(),
+            type: node.data('type'),
+            label: node.data('label'),
+            connections: cy.edges().filter(edge => edge.source().id() === node.id() || edge.target().id() === node.id()).length,
+            status: node.style('background-color') === '#ff6b35' ? 'active' : 'inactive'
+        });
+    });
+
+    // Add protocol information from trace data
+    const protocols = [...new Set(traceData.map(entry => entry.packetType))];
+    protocols.forEach(protocol => {
+        const protocolPackets = traceData.filter(entry => entry.packetType === protocol);
+        exportData.protocols.push({
+            type: protocol,
+            packet_count: protocolPackets.length,
+            sources: [...new Set(protocolPackets.map(p => p.source))],
+            targets: [...new Set(protocolPackets.map(p => p.target))]
+        });
+    });
+
+    // Create and download JSON file
+    const jsonContent = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonContent], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `iot_simulation_${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    log('💾 JSON export created: iot_simulation_' + Date.now() + '.json');
+    log(`📊 Exported ${exportData.devices.length} devices, ${exportData.protocols.length} protocols, ${exportData.trace_data.length} trace entries`);
+}
+
+function downloadTraceFile() {
+    const traceContent = generateTraceFile();
+    const blob = new Blob([traceContent], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `iot_trace_${Date.now()}.tr`;
+    a.click();
+    URL.revokeObjectURL(url);
+    log('📄 Trace file downloaded: iot_trace_' + Date.now() + '.tr');
+}
+
+function clearTraceData() {
+    traceData = [];
+    traceStartTime = Date.now();
+    log('🗑️ Trace data cleared');
+}
+
+function toggleVisualizationLayer() {
+    const layers = ['Device', 'Protocol', 'Energy', 'DataFlow'];
+    const currentIndex = layers.indexOf(visualizationLayer);
+    visualizationLayer = layers[(currentIndex + 1) % layers.length];
+    document.getElementById("vizLayer").textContent = visualizationLayer;
+    
+    // Apply layer-specific styling
+    applyVisualizationLayer(visualizationLayer);
+    log(`📊 Visualization layer changed to: ${visualizationLayer}`);
+}
+
+function applyVisualizationLayer(layer) {
+    // Reset to default styling
+    cy.nodes().style('background-color', '#777');
+    cy.edges().style('line-color', '#999');
+    
+    switch(layer) {
+        case 'Device':
+            // Show device types with different colors
+            cy.nodes().forEach(node => {
+                const type = node.data('type');
+                const colors = {
+                    'Sensor': '#2ecc71',
+                    'Actuator': '#e74c3c',
+                    'Controller': '#3498db',
+                    'Gateway': '#f39c12',
+                    'Cloud': '#9b59b6'
+                };
+                node.style('background-color', colors[type] || '#777');
+            });
+            break;
+            
+        case 'Protocol':
+            // Show protocol types on edges
+            cy.edges().forEach(edge => {
+                const protocol = edge.data('protocol') || 'unknown';
+                const colors = {
+                    'I2C': '#ff9800',
+                    'SPI': '#673ab7',
+                    'UART': '#9c27b0',
+                    'WiFi': '#2196f3',
+                    'BLE': '#3b5998',
+                    'LoRa': '#ff9800',
+                    'MQTT': '#007bff'
+                };
+                edge.style('line-color', colors[protocol] || '#999');
+                edge.style('width', '4px');
+            });
+            break;
+            
+        case 'Energy':
+            // Show energy consumption levels
+            cy.nodes().forEach(node => {
+                const energy = node.data('energy') || 0;
+                if (energy > 5) {
+                    node.style('background-color', '#e74c3c'); // High energy
+                } else if (energy > 2) {
+                    node.style('background-color', '#f39c12'); // Medium energy
+                } else {
+                    node.style('background-color', '#2ecc71'); // Low energy
+                }
+            });
+            break;
+            
+        case 'DataFlow':
+            // Show data flow intensity
+            cy.edges().forEach(edge => {
+                const flow = edge.data('flow') || 0;
+                const intensity = Math.min(flow / 10, 1);
+                const blue = Math.floor(255 * (1 - intensity));
+                edge.style('line-color', `rgb(255, ${blue}, 0)`);
+                edge.style('width', 2 + intensity * 4);
+            });
+            break;
+    }
+}
+
+// Initialize
+log('📡 IoT Network loaded successfully');
+log(`🔍 Found ${cy.nodes().length} nodes and ${cy.edges().length} connections`);
+</script>
+
+</body>
+</html>

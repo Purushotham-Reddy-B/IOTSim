@@ -1,0 +1,6 @@
+{
+  "name": "smart home automation network",
+  "script": "# Smart Home with Multiple Sensors & Actuators\ntemp_sensor = Sensor(\"temp_living\")\nmotion_sensor = Sensor(\"motion_hall\")\nlight_sensor = Sensor(\"light_outdoor\")\narduino = Arduino(\"home_controller\")\nesp32 = ESP32(\"wifi_gateway\")\nrpi = RaspberryPi(\"central_hub\")\nled_lights = LED(\"living_lights\")\nfan = Actuator(\"ceiling_fan\")\ndisplay = Display(\"status_panel\")\n\n# Sensor network to controller\ntemp_sensor.connect(arduino)\nmotion_sensor.connect(arduino)\nlight_sensor.connect(arduino)\n\n# Controller to communication\narduino.connect(esp32)\nesp32.connect(rpi)\n\n# Hub to actuators\nrpi.connect(led_lights)\nrpi.connect(fan)\nrpi.connect(display)\n\n# Power system\narduino.turn_on()\nesp32.turn_on()\nrpi.turn_on()\nled_lights.turn_on()\nfan.turn_on()\ndisplay.turn_on()",
+  "timestamp": "20260403_214401",
+  "created_at": "2026-04-03T21:44:01.145201"
+}
